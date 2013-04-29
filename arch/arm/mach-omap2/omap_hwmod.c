@@ -192,24 +192,6 @@ static int _update_sysc_cache(struct omap_hwmod *oh)
 
 	return 0;
 }
-/**
- * _write_sysconfig_raw - write a value to the module's OCP_SYSCONFIG register
- * @v: OCP_SYSCONFIG value to write
- * @oh: struct omap_hwmod *
- *
- * Write @v into the module class' OCP_SYSCONFIG register, if it has
- * one.  No return value. No sysc cache update.
- */
-static void _write_sysconfig_raw(u32 v, struct omap_hwmod *oh)
-{
-	if (!oh->class->sysc) {
-		WARN(1, "omap_hwmod: %s: cannot write OCP_SYSCONFIG: not defined on hwmod's class\n", oh->name);
-		return;
-	}
-
-	omap_hwmod_write(v, oh, oh->class->sysc->sysc_offs);
-}
-
 
 /**
  * _write_sysconfig - write a value to the module's OCP_SYSCONFIG register
@@ -217,14 +199,20 @@ static void _write_sysconfig_raw(u32 v, struct omap_hwmod *oh)
  * @oh: struct omap_hwmod *
  *
  * Write @v into the module class' OCP_SYSCONFIG register, if it has
- * one.  No return value. Update sysc cache.
+ * one.  No return value.
  */
 static void _write_sysconfig(u32 v, struct omap_hwmod *oh)
 {
-	_write_sysconfig_raw(v, oh);
+	if (!oh->class->sysc) {
+		WARN(1, "omap_hwmod: %s: cannot write OCP_SYSCONFIG: not defined on hwmod's class\n", oh->name);
+		return;
+	}
+
+	/* XXX ensure module interface clock is up */
 
 	/* Module might have lost context, always update cache and register */
 	oh->_sysc_cache = v;
+	omap_hwmod_write(v, oh, oh->class->sysc->sysc_offs);
 }
 
 /**
@@ -1196,7 +1184,7 @@ static int _ocp_softreset(struct omap_hwmod *oh)
 	ret = _set_softreset(oh, &v);
 	if (ret)
 		goto dis_opt_clks;
-	_write_sysconfig_raw(v, oh);
+	_write_sysconfig(v, oh);
 
 	if (oh->class->sysc->srst_udelay)
 		udelay(oh->class->sysc->srst_udelay);
@@ -1652,8 +1640,7 @@ int omap_hwmod_softreset(struct omap_hwmod *oh)
 	ret = _set_softreset(oh, &v);
 	if (ret)
 		goto error;
-	/* Use raw write here to avoid sysc cache update */
-	_write_sysconfig_raw(v, oh);
+	_write_sysconfig(v, oh);
 
 error:
 	return ret;

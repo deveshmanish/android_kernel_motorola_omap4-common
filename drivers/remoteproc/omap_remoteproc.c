@@ -32,7 +32,6 @@
 #include <plat/omap-pm.h>
 #include <plat/dmtimer.h>
 #include "../../arch/arm/mach-omap2/dvfs.h"
-#include "../../arch/arm/mach-omap2/omap2plus-cpufreq.h"
 #include "../../arch/arm/mach-omap2/clockdomain.h"
 
 #define PM_SUSPEND_MBOX		0xffffff07
@@ -557,10 +556,7 @@ static int omap_rproc_set_l3_bw(struct rproc *rproc, long val)
 
 static int omap_rproc_scale(struct rproc *rproc, long val)
 {
-	if (rproc->dev == omap2_get_mpuss_device())
-		return omap_cpufreq_scale(rproc->dev, val/1000);
-	else
-		return omap_device_scale(rproc->dev, rproc->dev, val);
+	return omap_device_scale(rproc->dev, rproc->dev, val);
 }
 
 static struct rproc_ops omap_rproc_ops = {

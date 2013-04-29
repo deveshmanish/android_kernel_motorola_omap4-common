@@ -1312,7 +1312,7 @@ static void make_even(u16 *x, u16 *w)
 
 /* Configure dispc for partial update. Return possibly modified update
  * area */
-int dss_setup_partial_planes(struct omap_dss_device *dssdev,
+void dss_setup_partial_planes(struct omap_dss_device *dssdev,
 		u16 *xi, u16 *yi, u16 *wi, u16 *hi, bool enlarge_update_area)
 {
 	struct overlay_cache_data *oc;
@@ -1323,7 +1323,6 @@ int dss_setup_partial_planes(struct omap_dss_device *dssdev,
 	u16 x, y, w, h;
 	unsigned long flags;
 	bool area_changed;
-	int r = 0;
 
 	x = *xi;
 	y = *yi;
@@ -1337,7 +1336,7 @@ int dss_setup_partial_planes(struct omap_dss_device *dssdev,
 
 	if (!mgr) {
 		DSSDBG("no manager\n");
-		return -EINVAL;
+		return;
 	}
 
 	make_even(&x, &w);
@@ -1434,7 +1433,7 @@ int dss_setup_partial_planes(struct omap_dss_device *dssdev,
 	mc->w = w;
 	mc->h = h;
 
-	r = configure_dispc();
+	configure_dispc();
 
 	mc->do_manual_update = false;
 
@@ -1444,8 +1443,6 @@ int dss_setup_partial_planes(struct omap_dss_device *dssdev,
 	*yi = y;
 	*wi = w;
 	*hi = h;
-
-	return r;
 }
 
 static void schedule_completion_irq(void);
