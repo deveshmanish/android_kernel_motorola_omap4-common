@@ -48,6 +48,9 @@
 #include "dss.h"
 #include "dss_features.h"
 #include "dispc.h"
+#ifdef CONFIG_OMAP2_DSS_GAMMA_CONTROL
+#include "gammatable.h"
+#endif
 
 /* DISPC */
 #define DISPC_SZ_REGS			SZ_4K
@@ -829,7 +832,7 @@ dispc_get_scaling_coef(u32 inc, bool five_taps)
 	static const struct dispc_hv_coef coef_M32[8] = {
 		{    7,   34,   46,   34,    7 },
 		{    4,   31,   46,   37,   10 },
-		{    1,   27,   46,   39,   14 },
+		{    1,   28,   46,   39,   14 },
 		{   -1,   24,   46,   42,   17 },
 		{   21,   45,   45,   21,   -4 },
 		{   17,   42,   46,   24,   -1 },
@@ -1475,10 +1478,10 @@ static void _dispc_set_scale_param(enum omap_plane plane,
 	hscaleup = orig_width <= out_width;
 	vscaleup = orig_height <= out_height;
 
-	_dispc_set_scale_coef(plane, hscaleup, vscaleup, five_taps, color_comp);
-
 	fir_hinc = 1024 * orig_width / out_width;
 	fir_vinc = 1024 * orig_height / out_height;
+
+	_dispc_set_scale_coef(plane, fir_hinc, fir_vinc, five_taps, color_comp);
 
 	_dispc_set_fir(plane, fir_hinc, fir_vinc, color_comp);
 }
@@ -2175,8 +2178,8 @@ int dispc_scaling_decision(u16 width, u16 height,
 		if (!can_scale)
 			goto loop;
 
-		if (out_width < in_width / maxdownscale ||
-			out_height < in_height / maxdownscale)
+		if (out_width * maxdownscale < in_width ||
+			out_height * maxdownscale < in_height) 
 			goto loop;
 
 		/* Use 5-tap filter unless must use 3-tap */
@@ -2842,6 +2845,54 @@ bool dispc_trans_key_enabled(enum omap_channel ch)
 	return enabled;
 }
 
+#ifdef CONFIG_OMAP2_DSS_GAMMA_CONTROL
+/* valid inputs for gamma are from 1 to 10 that map
+  from 0.2 to 2.2 gamma values and 0 for disabled */
+int dispc_enable_gamma(enum omap_channel ch, u8 gamma)
+{
+#ifdef CONFIG_ARCH_OMAP4
+	bool enabled;
+	u32 i, temp, channel;
+	static bool enable[MAX_DSS_MANAGERS];
+
+	enabled = enable[ch];
+
+	switch (ch) {
+	case OMAP_DSS_CHANNEL_LCD:
+		channel = 0;
+		break;
+	case OMAP_DSS_CHANNEL_LCD2:
+		channel = 1;
+		break;
+	case OMAP_DSS_CHANNEL_DIGIT:
+		channel = 2;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (gamma > NO_OF_GAMMA_TABLES || gamma < 0)
+		return -EINVAL;
+
+	if (gamma) {
+		u8 *tablePtr = gamma_table[gamma - 1];
+
+		for (i = 0; i < GAMMA_TBL_SZ; i++) {
+			temp =  tablePtr[i];
+			temp =  (i<<24)|(temp|(temp<<8)|(temp<<16));
+			dispc_write_reg(DISPC_GAMMA_TABLE + (channel*4), temp);
+		}
+	}
+	enabled = enabled & ~(1 << channel) | (gamma ? (1 << channel) : 0);
+	REG_FLD_MOD(DISPC_CONFIG, (enabled & 1), 3, 3);
+	REG_FLD_MOD(DISPC_CONFIG, !!(enabled & 6), 9, 9);
+
+	enable[ch] = enabled;
+
+#endif
+	return 0;
+}
+#endif
 
 void dispc_set_tft_data_lines(enum omap_channel channel, u8 data_lines)
 {

@@ -712,6 +712,23 @@ config TOUCH_WAKE
 	help
 	  Say Y here to enable Touch Wake
 
+config FSYNC_CONTROL
+        bool "Support for FSync Control"
+        default y
+        help
+          Say Y here to enable FSync Control
+
+config BLX
+       bool "Support for Battery Life eXtender"
+       default y
+       help
+         Say Y here to enable Battery Life eXtender
+
+config VIBRATOR_CONTROL
+       bool "Support for Vibrator Control"
+       default y
+       help
+	 Say Y here to enable Vibrator Control
 
 
 endif # MISC_DEVICES

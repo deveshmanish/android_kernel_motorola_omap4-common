@@ -275,8 +275,23 @@ void cpufreq_notify_transition(struct cpufreq_freqs *freqs, unsigned int state)
 	}
 }
 EXPORT_SYMBOL_GPL(cpufreq_notify_transition);
+/**
+ * cpufreq_notify_utilization - notify CPU userspace about CPU utilization
+ * change
+ *
+ * This function is called everytime the CPU load is evaluated by the
+ * ondemand governor. It notifies userspace of cpu load changes via sysfs.
+ */
+void cpufreq_notify_utilization(struct cpufreq_policy *policy,
+		unsigned int util)
+{
+	if (policy)
+		policy->util = util;
 
+	if (policy->util >= MIN_CPU_UTIL_NOTIFY)
+		sysfs_notify(&policy->kobj, NULL, "cpu_utilization");
 
+}
 
 /*********************************************************************
  *                          SYSFS INTERFACE                          *
@@ -364,6 +379,7 @@ show_one(cpuinfo_transition_latency, cpuinfo.transition_latency);
 show_one(scaling_min_freq, min);
 show_one(scaling_max_freq, max);
 show_one(scaling_cur_freq, cur);
+show_one(cpu_utilization, util);
 
 static int __cpufreq_set_policy(struct cpufreq_policy *data,
 				struct cpufreq_policy *policy);
@@ -433,6 +449,9 @@ static ssize_t store_scaling_governor(struct cpufreq_policy *policy,
 	unsigned int ret = -EINVAL;
 	char	str_governor[16];
 	struct cpufreq_policy new_policy;
+	char *envp[3];
+	char buf1[64];
+	char buf2[64];
 
 	ret = cpufreq_get_policy(&new_policy, policy->cpu);
 	if (ret)
@@ -452,6 +471,15 @@ static ssize_t store_scaling_governor(struct cpufreq_policy *policy,
 
 	policy->user_policy.policy = policy->policy;
 	policy->user_policy.governor = policy->governor;
+
+	sysfs_notify(&policy->kobj, NULL, "scaling_governor");
+
+	snprintf(buf1, sizeof(buf1), "GOV=%s", policy->governor->name);
+	snprintf(buf2, sizeof(buf2), "CPU=%u", policy->cpu);
+	envp[0] = buf1;
+	envp[1] = buf2;
+	envp[2] = NULL;
+	kobject_uevent_env(cpufreq_global_kobject, KOBJ_ADD, envp);
 
 	if (ret)
 		return ret;
@@ -578,6 +606,7 @@ cpufreq_freq_attr_ro(scaling_cur_freq);
 cpufreq_freq_attr_ro(bios_limit);
 cpufreq_freq_attr_ro(related_cpus);
 cpufreq_freq_attr_ro(affected_cpus);
+cpufreq_freq_attr_ro(cpu_utilization);
 cpufreq_freq_attr_rw(scaling_min_freq);
 cpufreq_freq_attr_rw(scaling_max_freq);
 cpufreq_freq_attr_rw(scaling_governor);
@@ -590,6 +619,7 @@ static struct attribute *default_attrs[] = {
 	&scaling_min_freq.attr,
 	&scaling_max_freq.attr,
 	&affected_cpus.attr,
+	&cpu_utilization.attr,
 	&related_cpus.attr,
 	&scaling_governor.attr,
 	&scaling_driver.attr,
@@ -941,11 +971,11 @@ static int cpufreq_add_dev(struct sys_device *sys_dev)
 		pr_debug("initialization failed\n");
 		goto err_unlock_policy;
 	}
-
-    /* Set min speed at boot to 300Mhz */
-
-  if (policy->min < 300000)
-    policy->min = 300000;	
+// Boot at 300 mhz - 1,2ghz
+if (policy->min < 300000)
+	policy->min = 300000;
+if (policy->max > 1200000)
+	policy->max = 1200000;
 
 	policy->user_policy.min = policy->min;
 	policy->user_policy.max = policy->max;
@@ -1648,13 +1678,11 @@ static int __cpufreq_set_policy(struct cpufreq_policy *data,
 			CPUFREQ_NOTIFY, policy);
 
 	// Set min speed to 100mhz
-#ifdef CONFIG_OMAP_OCFREQ_12
- if (policy->min > 150000)
-    policy->min = 150000;
-#else
- if (policy->min > 100000)
-    policy->min = 100000;
-#endif
+
+/* if (policy->min > 100000)
+	pr_info("[dtrail] cpufreq policy min set to 100 mhz");	
+    	policy->min = 100000; */
+
 	data->min = policy->min;
 	data->max = policy->max;
 
@@ -1725,10 +1753,6 @@ int cpufreq_update_policy(unsigned int cpu)
 
 	pr_debug("updating policy for CPU %u\n", cpu);
 	memcpy(&policy, data, sizeof(struct cpufreq_policy));
-
-// Temporary workaround for user policy CPU settings
-
-
 	policy.min = data->user_policy.min;
 	policy.max = data->user_policy.max;
 	policy.policy = data->user_policy.policy;

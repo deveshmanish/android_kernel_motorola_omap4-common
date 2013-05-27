@@ -546,6 +546,11 @@ err:
 
 static int omap_rproc_set_lat(struct rproc *rproc, long val)
 {
+#ifdef CONFIG_OMAP_IPU_DEEPIDLE
+ 	if (val == 40)
+      	     val = 1500;
+#endif 
+
 	pm_qos_update_request(rproc->qos_request, val);
 	return 0;
 }
@@ -557,9 +562,11 @@ static int omap_rproc_set_l3_bw(struct rproc *rproc, long val)
 
 static int omap_rproc_scale(struct rproc *rproc, long val)
 {
+#ifndef CONFIG_VIDEO_OMAP_DCE
 	if (rproc->dev == omap2_get_mpuss_device())
 		return omap_cpufreq_scale(rproc->dev, val/1000);
 	else
+#endif
 		return omap_device_scale(rproc->dev, rproc->dev, val);
 }
 

@@ -49,6 +49,10 @@
 static int omap4_virt_l3_set_rate(struct clk *clk, unsigned long rate);
 static long omap4_virt_l3_round_rate(struct clk *clk, unsigned long rate);
 static unsigned long omap4_virt_l3_recalc(struct clk *clk);
+static int omap4_virt_iva_set_rate(struct clk *clk, unsigned long rate);
+static long omap4_virt_iva_round_rate(struct clk *clk, unsigned long rate);
+static int omap4_virt_dsp_set_rate(struct clk *clk, unsigned long rate);
+static long omap4_virt_dsp_round_rate(struct clk *clk, unsigned long rate);
 
 /* Root clocks */
 static struct clk extalt_clkin_ck = {
@@ -771,6 +775,30 @@ static struct clk dpll_iva_m5x2_ck = {
 	.set_rate	= &omap2_clksel_set_rate,
 };
 
+static struct clk virt_iva_ck = {
+	.name		= "virt_iva_ck",
+	.parent		= &dpll_iva_m5x2_ck,
+	.ops		= &clkops_null,
+	.round_rate	= &omap4_virt_iva_round_rate,
+	.set_rate	= &omap4_virt_iva_set_rate,
+};
+
+static struct clk virt_dsp_ck = {
+	.name		= "virt_dsp_ck",
+	.parent		= &dpll_iva_m4x2_ck,
+	.ops		= &clkops_null,
+	.round_rate	= &omap4_virt_dsp_round_rate,
+	.set_rate	= &omap4_virt_dsp_set_rate,
+};
+
+static struct clk virt_lcd_pclk = {
+	.name		= "virt_lcd_pclk",
+	.parent		= NULL,
+	.ops		= &clkops_null,
+	.round_rate	= &clk_dummy_round_rate,
+	.set_rate	= &clk_dummy_set_rate,
+};
+
 /* DPLL_MPU */
 static struct dpll_data dpll_mpu_dd = {
 	.mult_div1_reg	= OMAP4430_CM_CLKSEL_DPLL_MPU,
@@ -825,9 +853,6 @@ static struct clk virt_dpll_mpu_ck = {
 	.name		= "virt_dpll_mpu_ck",
 	.parent		= &dpll_mpu_ck,
 	.ops		= &clkops_null,
-	.recalc		= &omap4460_mpu_dpll_recalc,
-	.round_rate	= &omap4460_mpu_dpll_round_rate,
-	.set_rate	= &omap4460_mpu_dpll_set_rate,
 };
 
 static struct clk per_hs_clk_div_ck = {
@@ -1078,7 +1103,8 @@ static struct dpll_data dpll_usb_dd = {
 	.flags		= DPLL_J_TYPE,
 	.clk_ref	= &sys_clkin_ck,
 	.control_reg	= OMAP4430_CM_CLKMODE_DPLL_USB,
-	.modes		= (1 << DPLL_LOW_POWER_BYPASS) | (1 << DPLL_LOCKED),
+	.modes		= (1 << DPLL_LOW_POWER_BYPASS) | (1 << DPLL_LOCKED)
+			| (1 << DPLL_LOW_POWER_STOP),
 	.autoidle_reg	= OMAP4430_CM_AUTOIDLE_DPLL_USB,
 	.idlest_reg	= OMAP4430_CM_IDLEST_DPLL_USB,
 	.mult_mask	= OMAP4430_DPLL_MULT_MASK,
@@ -1530,7 +1556,6 @@ static struct clk bandgap_ts_fclk = {
 	.name		= "bandgap_ts_fclk",
 	.ops		= &clkops_omap2_dflt,
 	.enable_reg	= OMAP4430_CM_WKUP_BANDGAP_CLKCTRL,
-	.enable_bit	= OMAP4460_OPTFCLKEN_TS_FCLK_SHIFT,
 	.clkdm_name	= "l4_wkup_clkdm",
 	.parent		= &div_ts_ck,
 	.recalc		= &followparent_recalc,
@@ -3429,15 +3454,6 @@ static struct clk smp_twd_443x = {
 	.speculate	= &omap2_clksel_speculate,
 };
 
-static struct clk smp_twd_446x = {
-	.name		= "smp_twd",
-	.parent		= &virt_dpll_mpu_ck,
-	.ops		= &clkops_null,
-	.fixed_div	= 2,
-	.recalc		= &omap_fixed_divisor_recalc,
-	.speculate	= &omap2_clksel_speculate,
-};
-
 /*
  * clkdev
  */
@@ -3493,8 +3509,10 @@ static struct omap_clk omap44xx_clks[] = {
 	CLK(NULL,	"dpll_iva_x2_ck",		&dpll_iva_x2_ck,	CK_44XX),
 	CLK(NULL,	"dpll_iva_m4x2_ck",		&dpll_iva_m4x2_ck,	CK_44XX),
 	CLK(NULL,	"dpll_iva_m5x2_ck",		&dpll_iva_m5x2_ck,	CK_44XX),
+	CLK(NULL,	"virt_iva_ck",			&virt_iva_ck,	CK_44XX),
+	CLK(NULL,	"virt_dsp_ck",			&virt_dsp_ck,	CK_44XX),
+	CLK(NULL,	"virt_lcd_pclk",		&virt_lcd_pclk,	CK_44XX),
 	CLK(NULL,	"dpll_mpu_ck",			&dpll_mpu_ck,	CK_44XX),
-	CLK(NULL,	"virt_dpll_mpu_ck",		&virt_dpll_mpu_ck,	CK_446X),
 	CLK(NULL,	"dpll_mpu_m2_ck",		&dpll_mpu_m2_ck,	CK_44XX),
 	CLK(NULL,	"per_hs_clk_div_ck",		&per_hs_clk_div_ck,	CK_44XX),
 	CLK(NULL,	"per_hsd_byp_clk_mux_ck",	&per_hsd_byp_clk_mux_ck,	CK_44XX),
@@ -3528,7 +3546,6 @@ static struct omap_clk omap44xx_clks[] = {
 	CLK(NULL,	"l4_div_ck",			&l4_div_ck,	CK_44XX),
 	CLK(NULL,	"lp_clk_div_ck",		&lp_clk_div_ck,	CK_44XX),
 	CLK(NULL,	"l4_wkup_clk_mux_ck",		&l4_wkup_clk_mux_ck,	CK_44XX),
-	CLK(NULL,	"div_ts_ck",			&div_ts_ck,	CK_446X),
 	CLK(NULL,	"per_abe_nc_fclk",		&per_abe_nc_fclk,	CK_44XX),
 	CLK(NULL,	"mcasp2_fclk",			&mcasp2_fclk,	CK_44XX),
 	CLK(NULL,	"mcasp3_fclk",			&mcasp3_fclk,	CK_44XX),
@@ -3541,7 +3558,6 @@ static struct omap_clk omap44xx_clks[] = {
 	CLK(NULL,	"aes2_fck",			&aes2_fck,	CK_44XX),
 	CLK(NULL,	"aess_fck",			&aess_fck,	CK_44XX),
 	CLK("omap_temp_sensor.0",	"fck",	&bandgap_fclk,	CK_443X),
-	CLK("omap_temp_sensor.0",	"fck",	&bandgap_ts_fclk, CK_446X),
 	CLK(NULL,	"des3des_fck",			&des3des_fck,	CK_44XX),
 	CLK(NULL,	"dmic_sync_mux_ck",		&dmic_sync_mux_ck,	CK_44XX),
 	CLK(NULL,	"dmic_fck",			&dmic_fck,	CK_44XX),
@@ -3722,7 +3738,6 @@ static struct omap_clk omap44xx_clks[] = {
 	CLK(NULL,	"auxclkreq4_ck",		&auxclkreq4_ck,	CK_44XX),
 	CLK(NULL,	"auxclkreq5_ck",		&auxclkreq5_ck,	CK_44XX),
 	CLK("smp_twd",		NULL,		&smp_twd_443x,	CK_443X),
-	CLK("smp_twd",		NULL,		&smp_twd_446x,	CK_446X),
 	CLK("omap_timer.1",	"32k_ck",	&sys_32k_ck,	CK_44XX),
 	CLK("omap_timer.2",	"32k_ck",	&sys_32k_ck,	CK_44XX),
 	CLK("omap_timer.3",	"32k_ck",	&sys_32k_ck,	CK_44XX),
@@ -3897,6 +3912,159 @@ static int omap4_virt_l3_set_rate(struct clk *clk, unsigned long rate)
 	return 0;
 }
 
+#define DPLL_IVA_M4_OPP50_RATE		232800000
+#define DPLL_IVA_M4_OPP100_RATE		465500000
+#define DPLL_IVA_M4_OPPTURBO_RATE	496000000
+#define DPLL_IVA_M4_OPPNITRO_RATE	430000000
+#define DPLL_IVA_M4_OPPNITROSB_RATE	500000000
+
+#define DPLL_IVA_M5_OPP50_RATE		133100000
+#define DPLL_IVA_M5_OPP100_RATE		266000000
+#define DPLL_IVA_M5_OPPTURBO_RATE	331000000
+#define DPLL_IVA_M5_OPPNITRO_RATE	430000000
+#define DPLL_IVA_M5_OPPNITROSB_RATE	500000000
+
+#define DPLL_IVA_OPP50_RATE		1862400000
+#define DPLL_IVA_OPP100_RATE		1862400000
+#define DPLL_IVA_OPPTURBO_RATE		992000000
+#define DPLL_IVA_OPPNITRO_RATE		1290000000
+#define DPLL_IVA_OPPNITROSB_RATE	1500000000
+
+struct virt_iva_ck_deps {
+	unsigned long iva_ck_rate;
+	unsigned long dsp_ck_rate;
+	unsigned long iva_dpll_rate;
+};
+
+static struct virt_iva_ck_deps omap4_virt_iva_clk_deps[] = {
+	{ /* OPP 50 */
+		.iva_ck_rate = DPLL_IVA_M5_OPP50_RATE,
+		.dsp_ck_rate = DPLL_IVA_M4_OPP50_RATE,
+		.iva_dpll_rate = DPLL_IVA_OPP50_RATE,
+	},
+	{ /* OPP 100 */
+		.iva_ck_rate = DPLL_IVA_M5_OPP100_RATE,
+		.dsp_ck_rate = DPLL_IVA_M4_OPP100_RATE,
+		.iva_dpll_rate = DPLL_IVA_OPP100_RATE,
+	},
+	{ /* OPP TURBO */
+		.iva_ck_rate = DPLL_IVA_M5_OPPTURBO_RATE,
+		.dsp_ck_rate = DPLL_IVA_M4_OPPTURBO_RATE,
+		.iva_dpll_rate = DPLL_IVA_OPPTURBO_RATE,
+	},
+	{ /* OPP NITRO */
+		.iva_ck_rate = DPLL_IVA_M5_OPPNITRO_RATE,
+		.dsp_ck_rate = DPLL_IVA_M4_OPPNITRO_RATE,
+		.iva_dpll_rate = DPLL_IVA_OPPNITRO_RATE,
+	},
+	{ /* OPP NITROSB */
+		.iva_ck_rate = DPLL_IVA_M5_OPPNITROSB_RATE,
+		.dsp_ck_rate = DPLL_IVA_M4_OPPNITROSB_RATE,
+		.iva_dpll_rate = DPLL_IVA_OPPNITROSB_RATE,
+	},
+};
+
+static long omap4_virt_iva_round_rate(struct clk *clk, unsigned long rate)
+{
+	struct virt_iva_ck_deps *iva_deps = NULL;
+	long last_diff = LONG_MAX;
+	int i;
+
+	if (!clk)
+		return 0;
+
+	for (i = 0; i < ARRAY_SIZE(omap4_virt_iva_clk_deps); i++) {
+		long diff;
+		iva_deps = &omap4_virt_iva_clk_deps[i];
+		diff = abs(rate - iva_deps->iva_ck_rate);
+		if (diff >= last_diff) {
+			iva_deps = &omap4_virt_iva_clk_deps[i-1];
+			break;
+		}
+		last_diff = diff;
+	}
+
+	if (!iva_deps)
+		return 0;
+
+	return iva_deps->iva_ck_rate;
+}
+
+static int omap4_virt_iva_set_rate(struct clk *clk, unsigned long rate)
+{
+	struct virt_iva_ck_deps *iva_deps = NULL;
+	long next_iva_dpll_rate;
+	int i, ret = 0;
+	struct clk *iva_ck = &dpll_iva_m5x2_ck;
+	struct clk *dsp_ck = &dpll_iva_m4x2_ck;
+	struct clk *dpll_ck = &dpll_iva_ck;
+
+	if (!clk)
+		return -EINVAL;
+
+	for (i = 0; i < ARRAY_SIZE(omap4_virt_iva_clk_deps); i++)
+		if (rate == omap4_virt_iva_clk_deps[i].iva_ck_rate)
+			break;
+
+	if (i < ARRAY_SIZE(omap4_virt_iva_clk_deps))
+		iva_deps = &omap4_virt_iva_clk_deps[i];
+	else
+		return -EINVAL;
+
+	next_iva_dpll_rate = dpll_ck->round_rate(dpll_ck,
+			iva_deps->iva_dpll_rate / 2);
+
+	if (next_iva_dpll_rate == dpll_ck->rate)
+		goto set_clock_rates;
+	else if (next_iva_dpll_rate < dpll_ck->rate)
+		goto set_dpll_rate;
+
+	if (iva_deps->iva_ck_rate < iva_ck->rate) {
+		ret = omap4_clksel_set_rate(iva_ck, iva_deps->iva_ck_rate);
+		if (ret)
+			goto out;
+	}
+
+	if (iva_deps->dsp_ck_rate < dsp_ck->rate) {
+		ret = omap4_clksel_set_rate(dsp_ck, iva_deps->dsp_ck_rate);
+		if (ret)
+			goto out;
+	}
+
+set_dpll_rate:
+	ret = dpll_ck->set_rate(dpll_ck, next_iva_dpll_rate);
+	if (ret)
+		goto out;
+
+	propagate_rate(dpll_ck);
+
+set_clock_rates:
+	ret = omap4_clksel_set_rate(iva_ck, iva_deps->iva_ck_rate);
+	if (ret)
+		goto out;
+
+	ret = omap4_clksel_set_rate(dsp_ck, iva_deps->dsp_ck_rate);
+	if (ret)
+		goto out;
+
+	clk->rate = iva_deps->iva_ck_rate;
+	return 0;
+
+out:
+	return ret;
+};
+
+static long omap4_virt_dsp_round_rate(struct clk *clk, unsigned long rate)
+{
+	return rate;
+};
+
+static int omap4_virt_dsp_set_rate(struct clk *clk, unsigned long rate)
+{
+	clk->rate = rate;
+	return 0;
+};
+
 int __init omap4xxx_clk_init(void)
 {
 	struct omap_clk *c;
@@ -3910,9 +4078,6 @@ int __init omap4xxx_clk_init(void)
 	if (cpu_is_omap443x()) {
 		cpu_mask = RATE_IN_443X;
 		cpu_clkflg = CK_443X;
-	} else if (cpu_is_omap446x()) {
-		cpu_mask = RATE_IN_446X;
-		cpu_clkflg = CK_446X;
 	}
 
 	clk_init(&omap2_clk_functions);

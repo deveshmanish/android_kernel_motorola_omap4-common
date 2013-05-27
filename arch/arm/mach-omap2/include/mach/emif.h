@@ -21,7 +21,7 @@
 #define EMIF2	1
 
 /* The maximum frequency at which the LPDDR2 interface can operate in Hz*/
-#define MAX_LPDDR2_FREQ	400000000	/* 400 MHz */
+#define MAX_LPDDR2_FREQ	466666666	/* 466 MHz */
 
 /* 19.2 MHz to be used for finding initialization values */
 #define EMIF_FREQ_19_2_MHZ 19200000	/* 19.2 MHz */
@@ -41,9 +41,9 @@
  * cache
  */
 #ifdef CONFIG_LIVE_OC
-#define EMIF_MAX_NUM_FREQUENCIES 14
+#define EMIF_MAX_NUM_FREQUENCIES 13
 #else
-#define EMIF_MAX_NUM_FREQUENCIES 10
+#define EMIF_MAX_NUM_FREQUENCIES 6
 #endif
 /*
  * Indices into the Addressing Table array.

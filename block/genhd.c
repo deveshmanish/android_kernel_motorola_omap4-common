@@ -615,6 +615,27 @@ void add_disk(struct gendisk *disk)
 	retval = sysfs_create_link(&disk_to_dev(disk)->kobj, &bdi->dev->kobj,
 				   "bdi");
 	WARN_ON(retval);
+	
+		/*
+	 * Limit default readahead size for small devices.
+	 *        disk size    readahead size
+	 *               1M                8k
+	 *               4M               16k
+	 *              16M               32k
+	 *              64M               64k
+	 *             256M              128k
+	 *               1G              256k
+	 *               4G              512k
+	 *              16G             1024k
+	 *              64G             2048k
+	 *             256G             4096k
+	 */
+
+	if (get_capacity(disk)) {
+		unsigned long size = get_capacity(disk) >> 9;
+		size = 1UL << (ilog2(size) / 2);
+		bdi->ra_pages = min(bdi->ra_pages, size);
+	}
 
 	disk_add_events(disk);
 }
@@ -1023,14 +1044,6 @@ static const struct attribute_group *disk_attr_groups[] = {
 	NULL
 };
 
-static void disk_free_ptbl_rcu_cb(struct rcu_head *head)
-{
-	struct disk_part_tbl *ptbl =
-		container_of(head, struct disk_part_tbl, rcu_head);
-
-	kfree(ptbl);
-}
-
 /**
  * disk_replace_part_tbl - replace disk->part_tbl in RCU-safe way
  * @disk: disk to replace part_tbl for
@@ -1051,7 +1064,7 @@ static void disk_replace_part_tbl(struct gendisk *disk,
 
 	if (old_ptbl) {
 		rcu_assign_pointer(old_ptbl->last_lookup, NULL);
-		call_rcu(&old_ptbl->rcu_head, disk_free_ptbl_rcu_cb);
+		kfree_rcu(old_ptbl, rcu_head);
 	}
 }
 

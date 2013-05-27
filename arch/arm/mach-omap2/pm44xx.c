@@ -107,10 +107,50 @@ static int need_sar_restore;
  */
 #define OMAP4_PM_ERRATUM_MPU_EMIF_NO_DYNDEP_IDLE_iXXX	BIT(4)
 
+/*
+ * There is a HW bug in CMD PHY which gives ISO signals as same for both
+ * PADn and PADp on differential IO pad, because of which IO leaks higher
+ * as pull controls are differential internally and pull value does not
+ * match A value.
+ * Though there is no functionality impact due to this bug, it is seen
+ * that by disabling the pulls there is a savings ~500uA in OSWR, but draws
+ * ~300uA more during OFF mode.
+ * To save power during both idle/suspend following approach taken:
+ * 1) Enable WA during boot-up.
+ * 2) Disable WA while attempting suspend and enable during resume.
+ *
+ * CDDS no: OMAP4460-1.0BUG00291 (OMAP official errata ID yet to be available).
+ */
+#define OMAP4_PM_ERRATUM_LPDDR_CLK_IO_iXXX		BIT(5)
+#define LPDDR_WD_PULL_DOWN				0x02
+
 u8 pm44xx_errata;
 #define is_pm44xx_erratum(erratum) (pm44xx_errata & OMAP4_PM_ERRATUM_##erratum)
 
 #define MAX_IOPAD_LATCH_TIME 1000
+
+void syscontrol_lpddr_clk_io_errata(bool enable)
+{
+	u32 v = 0;
+
+	if (!is_pm44xx_erratum(LPDDR_CLK_IO_iXXX))
+		return;
+
+	v = omap4_ctrl_pad_readl(OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_LPDDR2IO1_2);
+	if (enable)
+		v &= ~OMAP4_LPDDR2IO1_GR10_WD_MASK;
+	else
+		v |= LPDDR_WD_PULL_DOWN << OMAP4_LPDDR2IO1_GR10_WD_SHIFT;
+	omap4_ctrl_pad_writel(v, OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_LPDDR2IO1_2);
+
+	v = omap4_ctrl_pad_readl(OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_LPDDR2IO2_2);
+	if (enable)
+		v &= ~OMAP4_LPDDR2IO2_GR10_WD_MASK;
+	else
+		v |= LPDDR_WD_PULL_DOWN << OMAP4_LPDDR2IO1_GR10_WD_SHIFT;
+	omap4_ctrl_pad_writel(v, OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_LPDDR2IO2_2);
+}
+
 void omap4_trigger_ioctrl(void)
 {
 	int i = 0;
@@ -263,7 +303,13 @@ void omap4_enter_sleep(unsigned int cpu, unsigned int power_state, bool suspend)
 			OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_IO_PMCTRL_OFFSET);
 	}
 
+	if (suspend)
+		syscontrol_lpddr_clk_io_errata(false);
+
 	omap4_enter_lowpower(cpu, power_state);
+
+	if (suspend)
+		syscontrol_lpddr_clk_io_errata(true);
 
 	if (omap4_device_prev_state_off()) {
 		/* Reconfigure the trim settings as well */
@@ -760,6 +806,9 @@ static int omap4_pm_suspend(void)
 	omap4_enter_sleep(0, PWRDM_POWER_OFF, true);
 	omap4_print_wakeirq();
 	prcmdebug_dump(PRCMDEBUG_LASTSLEEP);
+#ifdef CONFIG_PM_DEBUG
+	regulator_show_state_noirq(enable_regulator_dump);
+#endif
 
 	/* Disable Device OFF state*/
 	if (off_mode_enabled)
@@ -982,9 +1031,11 @@ static void __init syscontrol_setup_regs(void)
 	v |= OMAP4_LPDDR21_VREF_AUTO_EN_CA_MASK | OMAP4_LPDDR21_VREF_AUTO_EN_DQ_MASK;
         omap4_ctrl_pad_writel(v, OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_LPDDR2IO2_3);
 
+	syscontrol_lpddr_clk_io_errata(true);
+	
 	/*
-	 * Workaround for CK differential IO PADn, PADp values due to bug in
-	 * EMIF CMD phy.
+	 * dtrail:  Workaround for CK differential IO PADn, PADp values due to bug in
+	 * 			EMIF CMD phy.
 	 */
 	v = omap4_ctrl_pad_readl(OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_LPDDR2IO1_2);
 	v &= ~OMAP4_LPDDR2IO1_GR10_WD_MASK;
@@ -1032,18 +1083,6 @@ static void __init prcm_setup_regs(void)
 		0x1 << OMAP4430_DISABLE_RTA_EXPORT_SHIFT,
 		OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_LDO_SRAM_IVA_SETUP_OFFSET);
 
-	/* Allow SRAM LDO to enter RET during  low power state*/
-	if (cpu_is_omap446x()) {
-		omap4_prminst_rmw_inst_reg_bits(OMAP4430_RETMODE_ENABLE_MASK,
-				0x1 << OMAP4430_RETMODE_ENABLE_SHIFT, OMAP4430_PRM_PARTITION,
-				OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_LDO_SRAM_CORE_CTRL_OFFSET);
-		omap4_prminst_rmw_inst_reg_bits(OMAP4430_RETMODE_ENABLE_MASK,
-				0x1 << OMAP4430_RETMODE_ENABLE_SHIFT, OMAP4430_PRM_PARTITION,
-				OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_LDO_SRAM_MPU_CTRL_OFFSET);
-		omap4_prminst_rmw_inst_reg_bits(OMAP4430_RETMODE_ENABLE_MASK,
-				0x1 << OMAP4430_RETMODE_ENABLE_SHIFT, OMAP4430_PRM_PARTITION,
-				OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_LDO_SRAM_IVA_CTRL_OFFSET);
-	}
 	/* Toggle CLKREQ in RET and OFF states */
 	omap4_prminst_write_inst_reg(0x2, OMAP4430_PRM_PARTITION,
 		OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_CLKREQCTRL_OFFSET);
@@ -1308,7 +1347,9 @@ static void __init omap4_pm_setup_errata(void)
 	 */
 	if (cpu_is_omap44xx())
 		pm44xx_errata |= OMAP4_PM_ERRATUM_IVA_AUTO_RET_iXXX |
-				 OMAP4_PM_ERRATUM_HSI_SWAKEUP_iXXX;
+				 OMAP4_PM_ERRATUM_HSI_SWAKEUP_iXXX |
+				 OMAP4_PM_ERRATUM_LPDDR_CLK_IO_iXXX;
+
 	/* Dynamic Dependency errata for all silicon !=443x */
 	if (cpu_is_omap443x())
 		pm44xx_errata |= OMAP4_PM_ERRATUM_MPU_EMIF_NO_DYNDEP_i688;
@@ -1325,7 +1366,7 @@ static void __init omap4_pm_setup_errata(void)
 static int __init omap4_pm_init(void)
 {
 	int ret = 0;
-	struct clockdomain *l3_1_clkdm;
+	struct clockdomain *l3_1_clkdm, *l4wkup;
 	struct clockdomain *ducati_clkdm, *l3_2_clkdm, *l4_per, *l4_cfg;
 
 	if (!cpu_is_omap44xx())
@@ -1342,9 +1383,6 @@ static int __init omap4_pm_init(void)
 	omap4_pm_setup_errata();
 
 	prcm_setup_regs();
-
-	if (cpu_is_omap446x())
-		syscontrol_setup_regs();
 
 	ret = request_irq(OMAP44XX_IRQ_PRCM,
 			  (irq_handler_t)prcm_interrupt_handler,
@@ -1374,6 +1412,12 @@ static int __init omap4_pm_init(void)
 	 * doesn't work as expected. The hardware recommendation is
 	 * to keep above dependencies. Without this system locks up or
 	 * randomly crashes.
+	 *
+	 * On 44xx:
+	 * The L4 wakeup depedency is added to workaround the OCP sync hardware
+	 * BUG with 32K synctimer which lead to incorrect timer value read
+	 * from the 32K counter. The BUG applies for GPTIMER1 and WDT2 which
+	 * are part of L4 wakeup clockdomain.
 	 */
 	mpuss_clkdm = clkdm_lookup("mpuss_clkdm");
 	emif_clkdm = clkdm_lookup("l3_emif_clkdm");
@@ -1382,7 +1426,8 @@ static int __init omap4_pm_init(void)
 	ducati_clkdm = clkdm_lookup("ducati_clkdm");
 	l4_per = clkdm_lookup("l4_per_clkdm");
 	l4_cfg = clkdm_lookup("l4_cfg_clkdm");
-	if ((!mpuss_clkdm) || (!emif_clkdm) || (!l3_1_clkdm) ||
+	l4wkup = clkdm_lookup("l4_wkup_clkdm");
+	if ((!mpuss_clkdm) || (!emif_clkdm) || (!l3_1_clkdm) || (!l4wkup) ||
 		(!l3_2_clkdm) || (!ducati_clkdm) || (!l4_per) || (!l4_cfg))
 		goto err2;
 
@@ -1399,6 +1444,7 @@ static int __init omap4_pm_init(void)
 		ret |= clkdm_add_wkdep(mpuss_clkdm, l4_cfg);
 		ret |= clkdm_add_wkdep(ducati_clkdm, l4_per);
 		ret |= clkdm_add_wkdep(ducati_clkdm, l4_cfg);
+		ret |= clkdm_add_wkdep(mpuss_clkdm, l4wkup);
 		if (ret) {
 			pr_err("Failed to add MPUSS -> L3/EMIF, DUCATI -> L3"
 			       " and MPUSS -> L4* wakeup dependency\n");
@@ -1409,13 +1455,11 @@ static int __init omap4_pm_init(void)
 			" MPUSS <-> L3_MAIN_1.\n");
 		pr_info("OMAP4 PM: Static dependency added between"
 			" DUCATI <-> L4_PER/CFG and DUCATI <-> L3.\n");
-	} else if (cpu_is_omap446x()) {
-		ret |= clkdm_add_wkdep(mpuss_clkdm, l4_per);
-		ret |= clkdm_add_wkdep(mpuss_clkdm, l4_cfg);
 
 		/* There appears to be a problem between the MPUSS and L3_1 */
 		ret |= clkdm_add_wkdep(mpuss_clkdm, l3_1_clkdm);
 		ret |= clkdm_add_wkdep(mpuss_clkdm, l3_2_clkdm);
+		ret |= clkdm_add_wkdep(mpuss_clkdm, l4wkup);
 
 		/* There appears to be a problem between the Ducati and L3/L4 */
 		ret |= clkdm_add_wkdep(ducati_clkdm, l3_1_clkdm);

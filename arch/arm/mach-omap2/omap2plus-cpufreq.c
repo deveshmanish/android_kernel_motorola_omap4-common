@@ -43,7 +43,6 @@
 #include "dvfs.h"
 #include "omap2plus-cpufreq.h"
 
-
 #ifdef CONFIG_CUSTOM_VOLTAGE
 #include <linux/custom_voltage.h>
 #endif
@@ -51,7 +50,6 @@
 #ifdef CONFIG_LIVE_OC
 #include <linux/live_oc.h>
 #endif
-
 
 #ifdef CONFIG_SMP
 struct lpj_info {
@@ -78,7 +76,7 @@ static bool omap_cpufreq_ready;
 static bool omap_cpufreq_suspended;
 static unsigned int screen_off_max_freq;
 
-static int oc_val;
+int oc_val = 0;
 
 static unsigned int omap_getspeed(unsigned int cpu)
 {
@@ -408,17 +406,16 @@ static int __cpuinit omap_cpu_init(struct cpufreq_policy *policy)
 	cpufreq_frequency_table_get_attr(freq_table, policy->cpu);
 
 #ifdef CONFIG_OMAP_OCFREQ_12
-if (policy->min > 150000)
-    policy->min = 150000;
+	/* We don't set an "if rule" so user won't be stuck at 100/1000 min/max */
+   	policy->min = 100000;
+	policy->max = 1000000;
+	policy->max = policy->cpuinfo.max_freq;
+	policy->cur = omap_getspeed(policy->cpu);
 #else
-if (policy->min > 100000)
-    policy->min = 100000;
-#endif
-
 	policy->min = policy->cpuinfo.min_freq;
 	policy->max = policy->cpuinfo.max_freq;
 	policy->cur = omap_getspeed(policy->cpu);
-
+#endif
 	for (i = 0; freq_table[i].frequency != CPUFREQ_TABLE_END; i++)
 		max_freq = max(freq_table[i].frequency, max_freq);
 	max_thermal = max_freq;
@@ -492,9 +489,6 @@ static ssize_t store_screen_off_freq(struct cpufreq_policy *policy,
 		CPUFREQ_RELATION_H, &index);
 	if (ret)
 		goto out;
-
-	if (screen_off_max_freq < 300000)
-		screen_off_max_freq = 300000;
 
 	screen_off_max_freq = freq_table[index].frequency;
 
@@ -627,7 +621,7 @@ static ssize_t store_gpu_oc(struct cpufreq_policy *policy, const char *buf, size
 	prev_oc = oc_val;
 	if (prev_oc < 0 || prev_oc > 2) {
 		// shouldn't be here
-		pr_info("[imoseyon] gpu_oc error - bailing\n");	
+		pr_info("[dtrail] gpu_oc error - bailing\n");	
 		return size;
 	}
 	
@@ -637,11 +631,28 @@ static ssize_t store_gpu_oc(struct cpufreq_policy *policy, const char *buf, size
 	if (prev_oc == oc_val) return size;
 
         dev = omap_hwmod_name_get_dev("gpu");
+
+#ifdef CONFIG_PVR_GOVERNOR
+  if (prev_oc < 2 && oc_val == 2) {
+    ret1 = opp_disable(dev, gpu_freqs[1]);
+    ret2 = opp_enable(dev, gpu_freqs[oc_val]);
+    pr_info("[imoseyon] gpu top speed changed from %lu to %lu (%d,%d)\n", 
+      gpu_freqs[prev_oc], gpu_freqs[oc_val], ret1, ret2);
+  } else if (prev_oc == 2) {
+    ret1 = opp_disable(dev, gpu_freqs[prev_oc]);
+    ret2 = opp_enable(dev, gpu_freqs[1]);
+    pr_info("[imoseyon] gpu top speed changed from %lu to %lu (%d,%d)\n", 
+      gpu_freqs[prev_oc], gpu_freqs[oc_val], ret1, ret2);
+  } else {
+    pr_info("[imoseyon] gpu top speed changed from %lu to %lu (%d,%d)\n", 
+      gpu_freqs[prev_oc], gpu_freqs[oc_val]);
+  }
+#else 
         ret1 = opp_disable(dev, gpu_freqs[prev_oc]);
         ret2 = opp_enable(dev, gpu_freqs[oc_val]);
-        pr_info("[imoseyon] gpu top speed changed from %lu to %lu (%d,%d)\n", 
+        pr_info("[dtrail] gpu top speed changed from %lu to %lu (%d,%d)\n", 
 		gpu_freqs[prev_oc], gpu_freqs[oc_val], ret1, ret2);
-	
+#endif	
 	return size;
 }
 
@@ -705,7 +716,7 @@ static int __init omap_cpufreq_init(void)
 {
 	int ret;
 
-	oc_val = 1;
+	/* oc_val = 0; */
 
 	if (cpu_is_omap24xx())
 		mpu_clk_name = "virt_prcm_set";
@@ -713,8 +724,6 @@ static int __init omap_cpufreq_init(void)
 		mpu_clk_name = "dpll1_ck";
 	else if (cpu_is_omap443x())
 		mpu_clk_name = "dpll_mpu_ck";
-	else if (cpu_is_omap446x())
-		mpu_clk_name = "virt_dpll_mpu_ck";
 
 	if (!mpu_clk_name) {
 		pr_err("%s: unsupported Silicon?\n", __func__);

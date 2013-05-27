@@ -30,7 +30,7 @@
 #define OMAP4_PROD_ID_I684_MASK		0x000C0000
 
 static bool bgap_trim_sw_overide;
-static bool dpll_trim_override;
+static bool dpll_trim_override = true;
 static bool ddr_io_trim_override;
 
 /**
@@ -62,7 +62,7 @@ int omap4_ldo_trim_configure(void)
 
 	/* OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_EFUSE_1 is reserved for 4470 */
 	/* FIXME: original code is: if (!cpu_is_omap447x()) */
-	if (cpu_is_omap443x() || cpu_is_omap446x()) {
+	if (cpu_is_omap443x()) {
 		/* For all trimmed and untrimmed write recommended value */
 		val =  0x10 << OMAP4_AVDAC_TRIM_BYTE0_SHIFT;
 		val |=  0x01 << OMAP4_AVDAC_TRIM_BYTE1_SHIFT;
@@ -79,8 +79,9 @@ int omap4_ldo_trim_configure(void)
 	}
 
 	/* Required for DPLL_MPU to lock at 2.4 GHz */
-     //	if (dpll_trim_override) /* Override factory-set trim for MPU DPLL (for freqs > 1.2GHz) */
+    // if (dpll_trim_override) /* Override factory-set trim for MPU DPLL (for freqs > 1.2GHz) */
 		omap_ctrl_writel(0x29, OMAP4_CTRL_MODULE_CORE_DPLL_NWELL_TRIM_0);
+
 
 	return 0;
 }
@@ -88,42 +89,6 @@ int omap4_ldo_trim_configure(void)
 /**
  * omap4460_mpu_dpll_trim_override() - provide a selective s/w trim overide
  */
-static __init void omap4460_mpu_dpll_trim_override(void)
-{
-	u32 val;
-
-	val = omap_ctrl_readl(OMAP4_CTRL_MODULE_CORE_STD_FUSE_OPP_DPLL_1) &
-			OMAP4_DPLL_MPU_TRIMMED_MASK;
-	switch (val) {
-	case OMAP4_DPLL_MPU_TRIMMED_VAL_3P0:
-		/* all ok.. */
-		break;
-	case OMAP4_DPLL_MPU_TRIMMED_VAL_2P4:
-		/* Cross check! */
-		if (omap4_has_mpu_1_5ghz()) {
-			WARN(1, "%s: OMAP is 1.5GHz capable, trimmed=1.2GHz!\n",
-				__func__);
-		}
-		break;
-	default:
-		WARN(1, "%s: UNKNOWN TRIM:0x%08x, using s/w override\n",
-			__func__, val);
-		/* fall through and use override */
-	case 0:
-		/*
-		 * For PRE_RTP devices: Not trimmed, use s/w override!
-		 * We only support unto 1.2GHz with s/w override,
-		 * so just give a gentle warning if higher opp is attempted
-		 */
-		dpll_trim_override = true;
-		/* Confirm */
-		if (omap4_has_mpu_1_5ghz()) {
-			pr_err("%s: OMAP is 1.5GHz capable, s/w trim=1.2GHz!\n",
-				__func__);
-		}
-		break;
-	}
-}
 
 static __init int omap4_ldo_trim_init(void)
 {
@@ -151,10 +116,6 @@ static __init int omap4_ldo_trim_init(void)
 	if (!bgap_trimmed)
 		bgap_trim_sw_overide = true;
 
-	/* If not already trimmed, use s/w override */
-	if (cpu_is_omap446x())
-		omap4460_mpu_dpll_trim_override();
-
 	/*
 	 * Errata i684 (revision B)
 	 * Impacts all OMAP4430ESx.y trimmed and untrimmed excluding units
@@ -167,7 +128,7 @@ static __init int omap4_ldo_trim_init(void)
 	 * 0  1  Fixed test program issue of overlapping of LPDDR & SmartIO
 	 *	 efuse fields, SW WA needed for LPDDR.
 	 * 1  1  New LPDDR trim formula to compensate for vertical vs horizontal
-	 *	 cell layout.  No overwrite required.
+	 *	 cell layout. No overwrite required.
 	 */
 	if (cpu_is_omap443x()) {
 		u32 prod_id;
@@ -182,3 +143,4 @@ static __init int omap4_ldo_trim_init(void)
 	return omap4_ldo_trim_configure();
 }
 arch_initcall(omap4_ldo_trim_init);
+
